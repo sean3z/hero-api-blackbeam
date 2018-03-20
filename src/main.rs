@@ -2,23 +2,21 @@
 #![plugin(rocket_codegen)]
 
 extern crate rocket;
-#[macro_use] extern crate rocket_contrib;
+extern crate rocket_contrib;
 #[macro_use] extern crate serde_derive;
 
-#[macro_use] extern crate diesel;
-extern crate r2d2;
-extern crate r2d2_diesel;
+#[macro_use] extern crate mysql;
 
-use rocket_contrib::{Json, Value};
+use rocket_contrib::{Json};
+use rocket::{State};
 
 mod hero;
 use hero::{Hero};
 
 mod db;
-mod schema;
 
 #[post("/", data = "<hero>")]
-fn create(hero: Json<Hero>, connection: db::Connection) -> Json<Hero> {
+fn create(hero: Json<Hero>, connection: State<mysql::Pool>) -> Json<Hero> {
     let hero = hero.into_inner();
 
     let insert = Hero {
@@ -29,42 +27,12 @@ fn create(hero: Json<Hero>, connection: db::Connection) -> Json<Hero> {
         age: hero.age
     };
 
-    Json(Hero::create(insert, &connection))
-}
-
-#[get("/")]
-fn read(connection: db::Connection) -> Json<Value> {
-    Json(json!(Hero::read(&connection)))
-}
-
-#[put("/<id>", data = "<hero>")]
-fn update(id: i32, hero: Json<Hero>, connection: db::Connection) -> Json<Value> {
-    let hero = hero.into_inner();
-
-    let update = Hero {
-        id: Some(id),
-        name: hero.name,
-        identity: hero.identity,
-        hometown: hero.hometown,
-        age: hero.age
-    };
-    
-    Json(json!({
-        "success": Hero::update(id, update, &connection)
-    }))
-}
-
-#[delete("/<id>")]
-fn delete(id: i32, connection: db::Connection) -> Json<Value> {
-    Json(json!({
-        "success": Hero::delete(id, &connection)
-    }))
+    Json(Hero::create(insert, connection))
 }
 
 fn main() {
     rocket::ignite()
         .manage(db::connect())
-        .mount("/hero", routes![create, update, delete])
-        .mount("/heroes", routes![read])
+        .mount("/hero", routes![create])
         .launch();
 }

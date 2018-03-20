@@ -1,10 +1,7 @@
-use diesel;
-use diesel::prelude::*;
-use diesel::mysql::MysqlConnection;
-use schema::heroes;
+use rocket::{State};
+use mysql;
 
-#[table_name = "heroes"]
-#[derive(Serialize, Deserialize, Queryable, Insertable, AsChangeset)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Hero {
     pub id: Option<i32>,
     pub name: String,
@@ -14,26 +11,32 @@ pub struct Hero {
 }
 
 impl Hero {
-    pub fn create(hero: Hero, connection: &MysqlConnection) -> Hero {
-        diesel::insert_into(heroes::table)
-            .values(&hero)
-            .execute(connection)
-            .expect("Error creating new hero");
+    pub fn create(hero: Hero, pool: State<mysql::Pool>) -> Hero {
+        let params = params!{
+            "name" => &hero.name,
+            "identity" => &hero.identity,
+            "hometown" => &hero.hometown,
+            "age" => &hero.age,
+        };
 
-        heroes::table.order(heroes::id.desc()).first(connection).unwrap()
-    }
+        let insert = "INSERT INTO heroes (name, identity, hometown, age) 
+            VALUES (:name, :identity, :hometown, :age)";
 
-    pub fn read(connection: &MysqlConnection) -> Vec<Hero> {
-        heroes::table.order(heroes::id.asc()).load::<Hero>(connection).unwrap()
-    }
+        pool.prep_exec(insert, params);
 
-    pub fn update(id: i32, hero: Hero, connection: &MysqlConnection) -> bool {
-        let query = diesel::update(heroes::table.find(id)).set(&hero).execute(connection);
-        !query.is_err()
-    }
+        pool.prep_exec("SELECT id, name, identity, hometown, age FROM heroes ORDER BY id DESC LIMIT 1", ())            
+        .map(|mut result| {
+            let row = result.next();
 
-    pub fn delete(id: i32, connection: &MysqlConnection) -> bool {
-        let query = diesel::delete(heroes::table.find(id)).execute(connection);
-        !query.is_err()
+            let (id, name, identity, hometown, age) = mysql::from_row(row.unwrap().unwrap());
+
+            Hero {
+                id: id,
+                name: name,
+                identity: identity,
+                hometown: hometown,
+                age: age
+            }
+        }).unwrap()
     }
 }
